@@ -1,10 +1,16 @@
 package mllp
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
+	"time"
+
+	"github.com/loadimpact/k6/lib"
+	"github.com/loadimpact/k6/stats"
 )
 
 type MLLP struct {
@@ -25,11 +31,12 @@ func NewClient(opts *Options) *MLLP {
 }
 
 // Set the given key with the given value and expiration time.
-func (m *MLLP) Send(file string) {
-	err := m.sendFile(file)
+func (m *MLLP) Send(ctx context.Context, file string) error {
+	err := m.sendFile(ctx, file)
 	if err != nil {
-		fmt.Println(err, "Impossible to send file")
+		return err
 	}
+	return nil
 }
 
 const (
@@ -39,7 +46,7 @@ const (
 )
 
 //Send sends a file over MLLP
-func (m *MLLP) sendFile(file string) error {
+func (m *MLLP) sendFile(ctx context.Context, file string) error {
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", m.opts.Host, m.opts.Port))
 	if err != nil {
 		return err
@@ -59,6 +66,18 @@ func (m *MLLP) sendFile(file string) error {
 	if err != nil {
 		return err
 	}
+
+	state := lib.GetState(ctx)
+	err = errors.New("State is nil")
+
+	if state == nil {
+		return err
+	}
+	stats.PushIfNotDone(ctx, state.Samples, stats.Sample{
+		Metric: WriterWrites,
+		Time:   time.Time{},
+		Value:  float64(len(fileContents)),
+	})
 
 	return nil
 }
